@@ -1,0 +1,2 @@
+### Test getHello endpoint
+PATCH http://localhost:3000/test-cases
