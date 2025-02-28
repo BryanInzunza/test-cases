@@ -1,11 +1,18 @@
-###Probar el endpoint test-cases
+###Probar el endpoint find ALL /test-cases/
+GET  http://localhost:3106/test-cases/
+Content-Type: application/json
 
+### Probar el endpoint /test-cases/:id
 PATCH http://localhost:3106/test-cases/1
 Content-Type: application/json
 
 {
     "opcArquitectura": 3
 }
+
+### Test GET /zip/:id endpoint
+GET http://localhost:3106/test-cases/zip/1
+
 
 ### Test POST /git endpoint with file upload
 POST http://localhost:3106/test-cases/git
@@ -30,5 +37,62 @@ Content-Type: application/json
   },
   "fec_creacion": "2023-10-01T00:00:00.000Z",
   "fec_actualizacion": "2023-10-02T00:00:00.000Z"
+}
+--boundary--
+
+
+
+###
+POST http://localhost:3106/test-cases/files
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="num_accion"
+
+1
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="opc_lenguaje"
+
+2
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="opc_arquitectura"
+
+{"key1": true, "key2": false}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="files"; filename="archivo.zip"
+Content-Type: application/zip
+
+< ./ruta/al/archivo.zip
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="files"; filename="archivo.pdf"
+Content-Type: application/pdf
+
+< ./ruta/al/archivo.pdf
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+
+###
+POST http://localhost:3106/test-cases/gitlab
+Content-Type: multipart/form-data
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="file.zip"
+Content-Type: application/zip
+
+< ./path/to/your/file.zip
+--boundary
+Content-Disposition: form-data; name="data"
+Content-Type: application/json
+
+{
+    "url": "https://github.com/usuario/nombre-repositorio.git",
+    "num_accion": 1,
+    "opc_lenguaje": 0,
+    "opc_arquitectura": {
+        "frontend": true,
+        "backend": false
+    },
+    "fec_creacion": "2025-02-28T11:10:41.000Z",
+    "fec_actualizacion": "2025-02-28T11:10:41.000Z"
 }
 --boundary--

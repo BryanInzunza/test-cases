@@ -60,11 +60,8 @@ export class TestCasesService {
         try {
 
             const queryBuilder = this.applicationRepository.createQueryBuilder('application')
-                .leftJoinAndSelect('application.checkmarx', 'checkmarx')
-                .leftJoinAndSelect('application.cost', 'cost')
                 .leftJoinAndSelect('application.applicationstatus', 'applicationstatus')
                 .leftJoinAndSelect('application.sourcecode', 'sourcecode')
-                .leftJoinAndSelect('application.user', 'user')
                 .orderBy('application.fec_creacion', 'ASC');
 
             queryBuilder.where('application.opc_estatus_caso = 2');
@@ -476,7 +473,7 @@ export class TestCasesService {
     async getStaticFile7z(id: number, response): Promise<void> {
         const application = await this.applicationRepository.findOne({
             where: { idu_aplicacion: id, opc_estatus_caso: 2 },
-            relations: ['applicationstatus', 'user', 'scans'],
+            relations: ['applicationstatus'],
         });
         if (!application) throw new NotFoundException(`Aplicación con ID ${id} no encontrada`);
 

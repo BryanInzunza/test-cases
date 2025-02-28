@@ -13,17 +13,18 @@ import { CreateFileDto } from './dto/create-file.dto';
 export class TestCasesController {
   constructor(private readonly testCasesService: TestCasesService) { }
 
-
+  //Probado
   @Get()
   findAll() {
     return this.testCasesService.findAll();
   }
-
+  //Probado
   @Patch(':id')
   addApptestCases(@Param('id', ParseIntPipe) id: number, @Body() createTestCases: CreateTestCases) {
     return this.testCasesService.addAppTestCases(id, createTestCases);
   }
 
+  //
   @Post('git')
   @UseInterceptors(FileInterceptor('file', {
     fileFilter: fileFilterZip,
