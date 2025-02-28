@@ -6,7 +6,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Application } from './entities/application.entity';
 import { Repository } from 'typeorm';
 import { CreateFileDto } from './dto/create-file.dto';
-import { User } from '../auth/entities/user.entity'
 import { v4 as uuid } from 'uuid';
 import { join } from 'path';
 import * as fsExtra from 'fs-extra';
@@ -15,6 +14,12 @@ import { ApplicationstatusService } from '../applicationstatus/applicationstatus
 import { RviaService } from '../rvia/rvia.service';
 import * as unzipper from 'unzipper';
 import * as seven from '7zip-min';
+import { CreateApplicationDto } from './dto/create-application.dto';
+import { promisify } from 'util';
+import { pipeline } from 'stream';
+import { HttpService } from '@nestjs/axios';
+import { catchError, lastValueFrom } from 'rxjs';
+import { createReadStream, createWriteStream, existsSync } from 'fs';
 
 const addon = require(process.env.RVIA_PATH);
 
@@ -23,6 +28,7 @@ export class TestCasesService {
 
     private readonly logger = new Logger('ApplicationsService');
     private readonly crviaEnvironment: number;
+    private downloadPath = '/sysx/bito/projects';
 
     constructor(
         @InjectRepository(Application)
@@ -33,6 +39,8 @@ export class TestCasesService {
         private readonly sourcecodeService: SourcecodeService,
         @Inject(forwardRef(() => RviaService))
         private readonly rviaService: RviaService,
+        private readonly httpService: HttpService,
+
 
     ) {
         this.crviaEnvironment = Number(this.configService.get('RVIA_ENVIRONMENT'));
@@ -45,6 +53,52 @@ export class TestCasesService {
             throw new NotFoundException(`Aplicación con ${id} no encontrado `);
 
         return aplicacion;
+    }
+
+    async findAll() {
+
+        try {
+
+            const queryBuilder = this.applicationRepository.createQueryBuilder('application')
+                .leftJoinAndSelect('application.checkmarx', 'checkmarx')
+                .leftJoinAndSelect('application.cost', 'cost')
+                .leftJoinAndSelect('application.applicationstatus', 'applicationstatus')
+                .leftJoinAndSelect('application.sourcecode', 'sourcecode')
+                .leftJoinAndSelect('application.user', 'user')
+                .orderBy('application.fec_creacion', 'ASC');
+
+            queryBuilder.where('application.opc_estatus_caso = 2');
+
+            const aplicaciones = await queryBuilder.getMany();
+
+
+            aplicaciones.forEach((aplicacion, index) => {
+                aplicacion.nom_aplicacion = this.encryptionService.decrypt(aplicacion.nom_aplicacion);
+                aplicacion.applicationstatus.des_estatus_aplicacion = this.encryptionService.decrypt(aplicacion.applicationstatus.des_estatus_aplicacion);
+                aplicacion.sourcecode.nom_codigo_fuente = this.encryptionService.decrypt(aplicacion.sourcecode.nom_codigo_fuente);
+                aplicacion.sourcecode.nom_directorio = this.encryptionService.decrypt(aplicacion.sourcecode.nom_directorio);
+                // aplicacion.user.nom_usuario = this.encryptionService.decrypt(aplicacion.user.nom_usuario);
+
+                (aplicacion as any).sequentialId = index + 1;
+                // (aplicacion as any).totalCost = aplicacion.cost.reduce<number>(
+                //     (sum, cost) => sum + (cost.val_monto ? parseFloat(cost.val_monto) : 0),
+                //     0
+                // );
+
+                // if (aplicacion.checkmarx && aplicacion.checkmarx.length > 0) {
+                //     aplicacion.checkmarx.forEach(checkmarx => {
+                //         checkmarx.nom_checkmarx = this.encryptionService.decrypt(checkmarx.nom_checkmarx);
+                //     });
+                // }
+
+            });
+
+            return aplicaciones;
+
+        } catch (error) {
+            this.handleDBExceptions(error);
+        }
+
     }
 
     async addAppTestCases(id: number, createTestCases: CreateTestCases) {
@@ -89,7 +143,7 @@ export class TestCasesService {
         throw new InternalServerErrorException('Unexpected error, check server logs');
     }
 
-    async createFiles(createFileDto: CreateFileDto, zipFile: Express.Multer.File, pdfFile: Express.Multer.File | undefined, user: User) {
+    async createFiles(createFileDto: CreateFileDto, zipFile: Express.Multer.File, pdfFile: Express.Multer.File | undefined) {
 
         const obj = new addon.CRvia(this.crviaEnvironment);
         const iduProject = obj.createIDProject();
@@ -110,7 +164,7 @@ export class TestCasesService {
                 throw new BadRequestException("Es necesario subir el PDF");
             }
 
-            const estatu = await this.findOne(2);
+            const estatu = await this.estatusService.findOne(2);
             if (!estatu) throw new NotFoundException('Estatus no encontrado');
 
             if (createFileDto.num_accion == 0 && !createFileDto.opc_arquitectura)
@@ -182,7 +236,7 @@ export class TestCasesService {
             application.opc_estatus_doc_code = opciones['2'] ? 2 : 0;
             application.opc_estatus_caso = opciones['3'] ? 2 : 0;
             application.opc_estatus_calificar = opciones['4'] ? 2 : 0;
-            // application.applicationstatus = estatu;
+            application.applicationstatus = estatu;
             application.sourcecode = sourcecode;
             application.idu_usuario = 1;
 
@@ -203,7 +257,9 @@ export class TestCasesService {
 
             await fsExtra.remove(tempFolderPath);
 
-            rviaProcess = await this.rviaService.ApplicationInitProcess(application, obj);
+            const createTestCases = new CreateTestCases();
+
+            await this.addAppTestCases(application.idu_aplicacion, createTestCases)
 
             application.nom_aplicacion = this.encryptionService.decrypt(application.nom_aplicacion);
 
@@ -229,5 +285,214 @@ export class TestCasesService {
         }
     }
 
+    async createGitFile(createApplicationDto: CreateApplicationDto, file?) {
+        try {
+            const repoInfo = this.parseGitHubURL(createApplicationDto.url);
+            if (!repoInfo) {
+                throw new BadRequestException('Invalid GitHub repository URL');
+            }
+
+            return await this.processRepository(repoInfo.repoName, repoInfo.userName, file, createApplicationDto.num_accion, createApplicationDto.opc_lenguaje, 'GitHub', createApplicationDto.opc_arquitectura);
+
+        } catch (error) {
+            this.handleDBExceptions(error);
+        }
+    }
+
+    async createGitLabFile(createApplicationDto: CreateApplicationDto, file?) {
+        try {
+            const repoInfo = this.getRepoInfo(createApplicationDto.url);
+            if (!repoInfo) {
+                throw new BadRequestException('Invalid GitLab repository URL');
+            }
+
+            return await this.processRepository(repoInfo.repoName, `${repoInfo.userName}/${repoInfo.groupName}`, file, createApplicationDto.num_accion, createApplicationDto.opc_lenguaje, 'GitLab', createApplicationDto.opc_arquitectura);
+
+        } catch (error) {
+            this.handleDBExceptions(error);
+        }
+    }
+
+    private async processRepository(repoName: string, repoUserName: string, file, numAccion: number, opcLenguaje: number, platform: string, opcArquitectura) {
+
+        const obj = new addon.CRvia(this.crviaEnvironment);
+        const iduProject = obj.createIDProject();
+
+        const streamPipeline = promisify(pipeline);
+        const uniqueTempFolderName = `temp-${uuid()}`;
+        const tempFolderPath = join(this.downloadPath, uniqueTempFolderName);
+        const repoFolderPath = join(this.downloadPath, `${iduProject}_${repoName}`);
+
+
+        const isSanitizacion = numAccion == 2 ? true : false;
+        let dataCheckmarx: { message: string; error?: string; isValid?: boolean; checkmarx?: any };
+        let rviaProcess: { isValidProcess: boolean, messageRVIA: string };
+
+        if (isSanitizacion && !file) {
+            throw new BadRequestException("Es necesario subir el PDF");
+        }
+
+        if (numAccion == 0 && !opcArquitectura)
+            throw new BadRequestException("Es necesario seleccionar una opción de arquitectura");
+
+        await fsExtra.ensureDir(tempFolderPath);
+
+        const branches = ['main', 'master'];
+        let zipUrl: string | null = null;
+
+        for (const branch of branches) {
+            const potentialUrl = platform === 'GitHub'
+                ? `https://github.com/${repoUserName}/${repoName}/archive/refs/heads/${branch}.zip`
+                : `https://gitlab.com/${repoUserName}/${repoName}/-/archive/${branch}/${repoName}-${branch}.zip`;
+
+            try {
+                await lastValueFrom(this.httpService.head(potentialUrl));
+                zipUrl = potentialUrl;
+                break;
+            } catch (error) {
+                continue;
+            }
+        }
+
+        if (!zipUrl) {
+            await fsExtra.remove(tempFolderPath);
+            await fsExtra.remove(file.path);
+            throw new InternalServerErrorException('No se encontró ninguna rama válida (main o master)');
+        }
+
+        const response = await lastValueFrom(
+            this.httpService.get(zipUrl, { responseType: 'stream' }).pipe(
+                catchError(() => {
+                    fsExtra.remove(tempFolderPath);
+
+                    throw new InternalServerErrorException('Error al descargar el repositorio');
+                }),
+            ),
+        );
+
+        const tempZipPath = join(tempFolderPath, `${repoName}.zip`);
+        const zipGit = join(this.downloadPath, `${iduProject}_${repoName}.zip`);
+
+
+        try {
+
+            await streamPipeline(response.data, createWriteStream(tempZipPath));
+
+            await fsExtra.copy(tempZipPath, zipGit);
+
+            await unzipper.Open.file(tempZipPath)
+                .then(d => d.extract({ path: tempFolderPath }))
+                .then(async () => {
+                    // Obtener el nombre del directorio extraído
+                    const extractedFolders = await fsExtra.readdir(tempFolderPath);
+                    const extractedFolder = join(tempFolderPath, extractedFolders.find(folder => folder.includes(repoName)));
+
+                    await fsExtra.ensureDir(repoFolderPath);
+                    await fsExtra.copy(extractedFolder, repoFolderPath);
+                    await fsExtra.remove(tempZipPath);
+                    await fsExtra.remove(tempFolderPath);
+                });
+
+            const sourcecode = await this.sourcecodeService.create({
+                nom_codigo_fuente: this.encryptionService.encrypt(repoName),
+                nom_directorio: this.encryptionService.encrypt(repoFolderPath),
+            });
+
+            const estatu = await this.estatusService.findOne(2);
+            const application = new Application();
+            application.nom_aplicacion = this.encryptionService.encrypt(repoName);
+            application.idu_proyecto = iduProject;
+            application.num_accion = numAccion;
+            application.opc_arquitectura = opcArquitectura || { "1": false, "2": false, "3": false, "4": false };
+            application.opc_lenguaje = opcLenguaje;
+            application.opc_estatus_doc = opcArquitectura['1'] ? 2 : 0;
+            application.opc_estatus_doc_code = opcArquitectura['2'] ? 2 : 0;
+            application.opc_estatus_caso = opcArquitectura['3'] ? 2 : 0;
+            application.opc_estatus_calificar = opcArquitectura['4'] ? 2 : 0;
+            application.applicationstatus = estatu;
+            application.sourcecode = sourcecode;
+            application.idu_usuario = 1;
+
+            await this.applicationRepository.save(application);
+
+
+
+            if (numAccion != 2) {
+                rviaProcess = await this.rviaService.ApplicationInitProcess(application, obj);
+            }
+
+            application.nom_aplicacion = this.encryptionService.decrypt(application.nom_aplicacion);
+
+            return {
+                application,
+                checkmarx: isSanitizacion && file ? dataCheckmarx.checkmarx : [],
+                esSanitizacion: isSanitizacion,
+                rviaProcess
+            };
+
+        } catch (error) {
+            await fsExtra.remove(repoFolderPath);
+            await fsExtra.remove(zipGit);
+            throw new InternalServerErrorException('Error al procesar el repositorio');
+        } finally {
+            await fsExtra.remove(tempFolderPath);
+            await fsExtra.remove(tempZipPath);
+        }
+    }
+
+    private parseGitHubURL(url: string): { repoName: string, userName: string } | null {
+        const regex = /github\.com\/([^\/]+)\/([^\/]+)\.git$/;
+        const match = url.match(regex);
+        if (match) {
+            return { userName: match[1], repoName: match[2] };
+        }
+        return null;
+    }
+
+    private getRepoInfo(url: string): { userName: string, groupName: string, repoName: string } | null {
+        try {
+            const { pathname } = new URL(url);
+
+            const pathSegments = pathname.split('/').filter(segment => segment);
+
+            if (pathSegments.length > 0 && pathSegments[pathSegments.length - 1].endsWith('.git')) {
+                const repoName = pathSegments.pop()!.replace('.git', '');
+                const groupName = pathSegments.pop()!;
+                const userName = pathSegments.join('/');
+
+                return {
+                    userName,
+                    groupName,
+                    repoName
+                };
+            }
+        } catch (error) {
+            console.error('Error parsing URL:', error);
+        }
+
+        return null;
+    }
+
+    async getStaticFile7z(id: number, response): Promise<void> {
+        const application = await this.applicationRepository.findOne({
+            where: { idu_aplicacion: id, opc_estatus_caso: 2 },
+            relations: ['applicationstatus', 'user', 'scans'],
+        });
+        if (!application) throw new NotFoundException(`Aplicación con ID ${id} no encontrada`);
+
+        const decryptedAppName = this.encryptionService.decrypt(application.nom_aplicacion);
+        const filePath = join(this.downloadPath, `${application.idu_proyecto}_${decryptedAppName}.7z`);
+        if (!existsSync(filePath)) throw new BadRequestException(`No se encontró el archivo ${application.idu_proyecto}_${decryptedAppName}.7z`);
+
+        response.setHeader('Content-Type', 'application/x-7z-compressed');
+        response.setHeader('Content-Disposition', `attachment; filename="${application.idu_proyecto}_${decryptedAppName}.7z"; filename*=UTF-8''${encodeURIComponent(application.idu_proyecto + '_' + decryptedAppName)}.7z`);
+
+        const readStream = createReadStream(filePath);
+        readStream.pipe(response);
+
+        readStream.on('error', (err) => {
+            throw new BadRequestException(`Error al leer el archivo: ${err.message}`);
+        });
+    }
 
 }

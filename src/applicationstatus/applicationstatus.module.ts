@@ -5,7 +5,6 @@ import { ApplicationstatusService } from './applicationstatus.service';
 import { ApplicationstatusController } from './applicationstatus.controller';
 import { Applicationstatus } from './entities/applicationstatus.entity';
 import { CommonModule } from 'src/common/common.module';
-import { AuthModule } from 'src/auth/auth.module';
 
 @Module({
   controllers: [ApplicationstatusController],
@@ -13,10 +12,9 @@ import { AuthModule } from 'src/auth/auth.module';
   imports: [
     TypeOrmModule.forFeature([Applicationstatus]),
     CommonModule,
-    AuthModule,
   ],
-  exports:[
+  exports: [
     ApplicationstatusService
   ]
 })
-export class ApplicationstatusModule {}
+export class ApplicationstatusModule { }

@@ -2,16 +2,14 @@ import { forwardRef, Module } from '@nestjs/common';
 import { RviaService } from './rvia.service';
 import { RviaController } from './rvia.controller';
 import { CommonModule } from 'src/common/common.module';
-import { CheckmarxModule } from 'src/checkmarx/checkmarx.module';
-import { TestCasesService } from 'src/test-cases/test-cases.service';
+import { TestCasesModule } from 'src/test-cases/test-cases.module';
 
 @Module({
   controllers: [RviaController],
   providers: [RviaService],
   imports: [
-    forwardRef(() => TestCasesService),
+    forwardRef(() => TestCasesModule),
     CommonModule,
-    forwardRef(() => CheckmarxModule),
   ],
   exports: [RviaService]
 })

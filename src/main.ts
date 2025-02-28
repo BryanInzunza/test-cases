@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import { envs } from './config';
 
 async function bootstrap() {
-  const logger = new Logger('login');
+  const logger = new Logger('test-cases');
 
   const app = await NestFactory.create(AppModule);
 
@@ -16,6 +16,6 @@ async function bootstrap() {
   );
 
   await app.listen(envs.port);
-  logger.log(`Login en el puerto ${envs.port}`);
+  logger.log(`Test-cases en el puerto ${envs.port}`);
 }
 bootstrap();

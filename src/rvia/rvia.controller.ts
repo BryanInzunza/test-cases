@@ -5,12 +5,12 @@ import { UpdateRviaDto } from './dto/update-rvia.dto';
 
 @Controller('rvia')
 export class RviaController {
-  constructor(private readonly rviaService: RviaService) {}
+  constructor(private readonly rviaService: RviaService) { }
 
-  @Post()
-  create(@Body() createRviaDto: CreateRviaDto) {
-    return this.rviaService.create(createRviaDto);
-  }
+  // @Post()
+  // create(@Body() createRviaDto: CreateRviaDto) {
+  //   return this.rviaService.create(createRviaDto);
+  // }
 
   @Get()
   findAll() {

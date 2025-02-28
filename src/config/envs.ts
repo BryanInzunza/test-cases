@@ -9,8 +9,6 @@ interface EnvVars {
   DB_NAME: string;
   DB_PORT: number;
   PORT: number;
-
-  JWT_SECRET: string;
   SECRET_KEY: string;
 }
 
@@ -21,7 +19,6 @@ const envsSchema = joi.object({
   DB_NAME: joi.string().required(),
   DB_PORT: joi.number().required(),
   PORT: joi.number().required(),
-  JWT_SECRET: joi.string().required(),
   SECRET_KEY: joi.string().required(),
 })
   .unknown(true);
@@ -45,7 +42,5 @@ export const envs = {
   dbName: envVars.DB_NAME,
   dbPort: envVars.DB_PORT,
   port: envVars.PORT,
-
-  jwtSecret: envVars.JWT_SECRET,
   secretKey: envVars.SECRET_KEY,
 };

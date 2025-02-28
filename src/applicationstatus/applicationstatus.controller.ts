@@ -3,16 +3,13 @@ import { Controller, Get, Post, Body, Patch, Param, ParseIntPipe } from '@nestjs
 import { ApplicationstatusService } from './applicationstatus.service';
 import { CreateApplicationstatusDto } from './dto/create-applicationstatus.dto';
 import { UpdateApplicationstatusDto } from './dto/update-applicationstatus.dto';
-import { Auth } from 'src/auth/decorators';
 import { Applicationstatus } from './entities/applicationstatus.entity';
-import { ValidRoles } from 'src/auth/interfaces';
 
 @Controller('applicationstatus')
 export class ApplicationstatusController {
   constructor(private readonly applicationstatusService: ApplicationstatusService) { }
 
   @Post()
-  @Auth(ValidRoles.admin)
   create(@Body() createApplicationstatusDto: CreateApplicationstatusDto) {
     return this.applicationstatusService.create(createApplicationstatusDto);
   }
@@ -28,7 +25,6 @@ export class ApplicationstatusController {
   }
 
   @Patch(':id')
-  @Auth(ValidRoles.admin)
   update(@Param('id', ParseIntPipe) id: number, @Body() updateApplicationstatusDto: UpdateApplicationstatusDto) {
     return this.applicationstatusService.update(id, updateApplicationstatusDto);
   }

@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { envs } from './config';
 import { TestCasesModule } from './test-cases/test-cases.module';
+import { TestCasesController } from './test-cases/test-cases.controller';
+import { TestCasesService } from './test-cases/test-cases.service';
 
 @Module({
   imports: [
@@ -19,8 +21,7 @@ import { TestCasesModule } from './test-cases/test-cases.module';
       autoLoadEntities: true,
       synchronize: false
     }),
-
-    //Modulos a importar
+    TestCasesModule
   ],
   controllers: [],
   providers: [],
